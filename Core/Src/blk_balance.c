@@ -96,7 +96,7 @@ uint8_t	process_BlkBalancer(void)
 
 		bb_ctrl.time_index++;
 
-		for (ch=0; ch<PB_MAX_CHANNEL; ch++) {
+		for (ch=0; ch<BB_MAX_CHANNEL; ch++) {
 
 			if (bb_ctrl.ch_ebable_mask & 1<<ch) {
 

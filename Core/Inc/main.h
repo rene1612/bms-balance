@@ -73,6 +73,7 @@ extern uint8_t alive_timer;
 #define PROCESS_1000_MS_TASK	0x10
 #define PROCESS_STATUS			0x20
 #define PROCESS_BLK_BALANCER	0x40
+#define PROCESS_OW				0x80
 
 #define ALIVE_TIMEOUT_10MS		15
 #define APP_CAN_BITRATE			500000UL
@@ -93,6 +94,8 @@ extern uint8_t alive_timer;
 #define REG_CTRL_ACTIVATE			0
 #define REG_CTRL_DEACTIVATE			1
 #define REG_CTRL_ENABLE_BB			2
+#define REG_CTRL_ENABLE_OW			3
+#define REG_CTRL_ENABLE_WS2815		5
 #define REG_CTRL_CRIT_ALERT			6
 #define REG_CTRL_RESET				7	//!<Reset des Controllers auslösen
 
@@ -129,6 +132,7 @@ typedef enum
 
 
 #define MAX_LF280K_CELL_COUNT	22
+#define MAX_TEMP_DEVICES_ON_THE_BUS 1
 
 /* USER CODE END Private defines */
 
@@ -333,10 +337,14 @@ void set_signal_led(uint8_t led, _LED_SIGNAL_MASK mask);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define WS2812B_LED_Pin 			GPIO_PIN_1
+#define WS2812B_LED_GPIO_Port 		GPIOA
 #define SPI1_DATA_STROBE_Pin		GPIO_PIN_0
 #define SPI1_DATA_STROBE_GPIO_Port	GPIOB
 #define SPI1_OE_Pin					GPIO_PIN_1
 #define SPI1_OE_GPIO_Port			GPIOB
+#define OneWire_Pin 				GPIO_PIN_10
+#define OneWire_GPIO_Port 			GPIOB
 #define LED_GREEN_Pin				GPIO_PIN_12
 #define LED_GREEN_GPIO_Port			GPIOB
 #define LED_RED_Pin					GPIO_PIN_13
@@ -352,6 +360,16 @@ void set_signal_led(uint8_t led, _LED_SIGNAL_MASK mask);
 #define LED_RED_Pin GPIO_PIN_12
 #define LED_BLUE_Pin GPIO_PIN_13
 
+
+#ifdef __WS2812B__
+ #define WS2815_ENABLE_Pin			GPIO_PIN_4
+ #define WS2815_ENABLE_GPIO_Port	GPIOB
+#endif
+
+#ifdef __DEBUG__
+ #define WS2815_ENABLE_Pin			GPIO_PIN_4
+ #define WS2815_ENABLE_GPIO_Port	GPIOB
+#endif
 
 /* USER CODE END MYPD */
 

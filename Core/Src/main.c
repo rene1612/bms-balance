@@ -17,13 +17,13 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include <blk_balancer.h>
 #include "main.h"
 #include "can.h"
 #include "crc.h"
 #include "dma.h"
 #include "spi.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -31,6 +31,15 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+
+//#include "OneWire.h"
+#include "dallas_temperature.h"
+#include "UartOneWire.h"
+
+#include <blk_balancer.h>
+#ifdef __WS2812B__
+#include "ws2812b.h"
+#endif
 
 
 
@@ -113,6 +122,11 @@ uint8_t main_task_scheduler;
 uint8_t alive_timer;
 uint16_t timer_10ms;
 
+extern UART_HandleTypeDef huart3;
+UartOneWire_HandleTypeDef ow;
+DallasTemperatureData dt;
+
+uint8_t resolution = TEMP_12_BIT;
 
 
 //#define __DEBUG__
@@ -156,7 +170,7 @@ __attribute__((__section__(".sw_info"))) const _SW_INFO_REGS sw_info_regs = {
 
 
 ////alles was persistend (im Flash) gespeichert werden soll, z.b. Kalibration, ...
-__attribute__((__section__(".app_config"))) const _BMS_BLK_CONFIG_REGS app_cfg_regs = {
+__attribute__((__section__(".app_config"))) const _BMS_BALANCE_CONFIG_REGS app_cfg_regs = {
 #if defined (__DEBUG__)
 	((1<<REG_ALERT_HEAT_SINK_TEMP) | (0<<REG_ALERT_BLK_VOLTAGE) | (0<<REG_ALERT_BLK_DIFF_VOLTAGE)), //allert_mask
 
@@ -187,7 +201,7 @@ const _DEV_CONFIG_REGS* pDevConfig = (const _DEV_CONFIG_REGS*)DEV_CONFIG_FL_ADDR
  */
 _MAIN_REGS main_regs = {
 	//!<RW CTRL Ein-/Ausschalten usw.  (1 BYTE )
-	((1<<REG_CTRL_ACTIVATE) | (1<<REG_CTRL_CRIT_ALERT) | (1<<REG_CTRL_ENABLE_BB) ),
+	((1<<REG_CTRL_ACTIVATE) | (1<<REG_CTRL_CRIT_ALERT) | (1<<REG_CTRL_ENABLE_BB)  | (1<<REG_CTRL_ENABLE_OW) | (1<<REG_CTRL_ENABLE_WS2815) ),
 
 	SYS_OK,
 	ERR_NONE,
@@ -303,7 +317,7 @@ int main(void)
 	alive_timer = 0;
 	timer_10ms = 0;
 
-	memcpy(&main_regs.cfg_regs, &app_cfg_regs, sizeof(_BMS_BLK_CONFIG_REGS));
+	memcpy(&main_regs.cfg_regs, &app_cfg_regs, sizeof(_BMS_BALANCE_CONFIG_REGS));
 
 	//copy dev-config from flash to ram (we will use it from ram)
 	memcpy(&main_regs.dev_config, pDevConfig, sizeof(_DEV_CONFIG_REGS));
@@ -338,6 +352,7 @@ int main(void)
   MX_CAN_Init();
   MX_SPI1_Init();
   MX_CRC_Init();
+  MX_USART3_UART_Init();
   MX_TIM4_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
@@ -407,10 +422,6 @@ int main(void)
 		  main_task_scheduler &= ~PROCESS_1000_MS_TASK;
 
 		  if (!(second_counter%2)) {
-			  if(main_regs.ctrl & (1<<REG_CTRL_ENABLE_NEEY)) {
-				  neey_task_scheduler |= PROCESS_NEEY_ALIVE;
-				  main_task_scheduler |= PROCESS_NEEY;
-			  }
 		  }
 		second_counter++;
 	  }
@@ -509,8 +520,8 @@ uint8_t process_10Ms_Timer(void)
 
 	//HAL_GPIO_WritePin(FAN_SPEED_GPIO_Port, FAN_SPEED_Pin, GPIO_PIN_TOGLE);
 	//HAL_GPIO_TogglePin(FAN_SPEED_GPIO_Port,FAN_SPEED_Pin);
-	if (main_regs.ctrl & (1<<REG_CTRL_ENABLE_PB))
-		process_PBalancer();
+	if (main_regs.ctrl & (1<<REG_CTRL_ENABLE_BB))
+		process_BlkBalancer();
 
 	if (!(timer_10ms % 10))
 	{

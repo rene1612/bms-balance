@@ -24,7 +24,6 @@
 /* USER CODE BEGIN 0 */
 #include <string.h>
 #include "main.h"
-#include "neey.h"
 #include "dallas_temperature.h"
 
 #ifdef __WS2812B__
@@ -43,8 +42,8 @@ uint8_t				can_replay_msg;
 uint8_t             CanRxData[8];
 uint8_t				current_cell_2_send;
 uint8_t				current_blk_data_2_send;
-_BMS_CELL_DATA		bms_cell_data[NEEY_CHANNEL_COUNT];
-_BMS_BLK_DATA1		bms_blk_data1;
+//_BMS_CELL_DATA		bms_cell_data[NEEY_CHANNEL_COUNT];
+//_BMS_BLK_DATA1		bms_blk_data1;
 _BMS_BLK_DATA2		bms_blk_data2;
 _BMS_BLK_DATA3		bms_blk_data3;
 
@@ -209,63 +208,24 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 
 /* USER CODE BEGIN 1 */
 
-uint8_t prepare_BMS_CellData()
-{
-	uint8_t cell_counter;
-
-	if (neey_ctrl.data_lock || dt.data_lock)
-		return 0;
-
-	neey_ctrl.data_lock = 1;
-	dt.data_lock = 1;
-
-	//for (cell_counter=0;cell_counter<neey_ctrl.neey_dev_info.CellCount;cell_counter++)
-	for (cell_counter=0;cell_counter<MAX_LF280K_CELL_COUNT;cell_counter++)
-	{
-		bms_cell_data[cell_counter].bms_data_type = BMS_GET_CELL_DATA_CMD;
-		bms_cell_data[cell_counter].flags_ch_number = (uint8_t)(cell_counter | (neey_ctrl.cell_data[cell_counter].flag << 5));
-		bms_cell_data[cell_counter].cell_voltage = neey_ctrl.cell_data[cell_counter].voltage;
-		bms_cell_data[cell_counter].cell_resistance = neey_ctrl.cell_data[cell_counter].resistance;
-		//		bms_cell_data[cell_counter].cell_temperature = Temp[cell_counter];
-		//bms_cell_data[cell_counter].cell_temperature = (int16_t)(temperatures[cell_counter]*100);
-		bms_cell_data[cell_counter].cell_temperature = (int16_t)getTemperatureByROM_Celsius(&dt, (uint8_t*)main_regs.cfg_regs.temp_sensor_lookup_table[cell_counter]);
-
-		//bms_cell_data[cell_counter].cell_flags = neey_ctrl.cell_data[cell_counter].flag;
-	}
-
-	neey_ctrl.data_lock = 0;
-	dt.data_lock = 0;
-
-	current_cell_2_send=0;
-	//current_blk_data_2_send=0;
-
-	return 1;
-}
 
 uint8_t prepare_BMS_BLKData()
 {
-	if (neey_ctrl.data_lock  || dt.data_lock)
+	if (dt.data_lock)
 		return 0;
 
-	neey_ctrl.data_lock = 1;
 	dt.data_lock = 1;
-
-	bms_blk_data1.bms_data_type=BMS_GET_BLK_DATA_CMD;
-	bms_blk_data1.flags_ch_number=1;
-	bms_blk_data1.amt_voltage=neey_ctrl.neey_dev_data.AmtVol;
 
 	bms_blk_data2.bms_data_type=BMS_GET_BLK_DATA_CMD;
 	bms_blk_data2.flags_ch_number=2;
-	bms_blk_data2.ave_voltage=neey_ctrl.neey_dev_data.AveVol;
-	bms_blk_data2.div_voltage=neey_ctrl.neey_dev_data.DiffVol;
+	bms_blk_data2.ave_voltage=0;
+	bms_blk_data2.div_voltage=0;
 
 	bms_blk_data3.bms_data_type=BMS_GET_BLK_DATA_CMD;
 	bms_blk_data3.flags_ch_number=3;
-	bms_blk_data3.bal_current=neey_ctrl.neey_dev_data.BalCurrent;
-	bms_blk_data3.neey_temperatur=neey_ctrl.neey_dev_data.Temperatur;
-	bms_blk_data3.heat_sink_temperatur=(int16_t)getTemperatureByROM_Celsius(&dt, (uint8_t*)main_regs.cfg_regs.temp_sensor_lookup_table[22]);
+	bms_blk_data3.bal_current=0;
+	//bms_blk_data3.heat_sink_temperatur=(int16_t)getTemperatureByROM_Celsius(&dt, (uint8_t*)main_regs.cfg_regs.temp_sensor_lookup_table[22]);
 
-	neey_ctrl.data_lock = 0;
 	dt.data_lock = 0;
 
 	current_blk_data_2_send=0;
@@ -282,59 +242,16 @@ uint8_t	process_CAN(void)
 	uint8_t* p_sys_reg_offset;
 
 
-	/* PROCESS_CAN_SEND_NEW_NEEY_DATA --------------------------------------------------------*/
-	if (can_task_scheduler & PROCESS_CAN_SEND_NEW_NEEY_DATA)
-	{
-		if (main_regs.cfg_regs.neey_cfg_data.auto_run) {
-
-			if (prepare_BMS_CellData()) {
-				can_task_scheduler |= PROCESS_CAN_SEND_NEW_CELL_DATA;
-			}
-
-			if (prepare_BMS_BLKData()) {
-				can_task_scheduler |= PROCESS_CAN_SEND_NEW_BLK_DATA;
-			}
-
-		}
-
-		can_task_scheduler &= ~PROCESS_CAN_SEND_NEW_NEEY_DATA;
-	}
-
-	/* PROCESS_CAN_SEND_NEW_CELL_DATA --------------------------------------------------------*/
-	if (can_task_scheduler & PROCESS_CAN_SEND_NEW_CELL_DATA) {
-		if (!HAL_CAN_IsTxMessagePending(&hcan, TxMailbox)) {
-			TxHeader.DLC=sizeof(_BMS_CELL_DATA);
-			memcpy(CanTxData, (uint8_t*)&bms_cell_data[current_cell_2_send],sizeof(_BMS_CELL_DATA));
-
-			if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, CanTxData, &TxMailbox) != HAL_OK) {
-				Error_Handler ();
-			}
-			else {
-				//if (++current_cell_2_send >= neey_ctrl.neey_dev_info.CellCount) {
-				if (++current_cell_2_send >= MAX_LF280K_CELL_COUNT) {
-					can_task_scheduler &= ~PROCESS_CAN_SEND_NEW_CELL_DATA;
-				}
-				set_signal_led(BLUE_LED, LED_200MS_FLASH);
-			}
-		}
-		else {
-			return can_task_scheduler;
-		}
-	}
 
 	/* PROCESS_CAN_SEND_NEW_BLK_DATA --------------------------------------------------------*/
 	if (can_task_scheduler & PROCESS_CAN_SEND_NEW_BLK_DATA) {
 		if (!HAL_CAN_IsTxMessagePending(&hcan, TxMailbox)) {
 
-			if(current_blk_data_2_send==0){
-				TxHeader.DLC=sizeof(_BMS_BLK_DATA1);
-				memcpy(CanTxData, (uint8_t*)&bms_blk_data1,sizeof(_BMS_BLK_DATA1));
-			}
-			else if (current_blk_data_2_send==1){
+			if (current_blk_data_2_send==0){
 				TxHeader.DLC=sizeof(_BMS_BLK_DATA2);
 				memcpy(CanTxData, (uint8_t*)&bms_blk_data2,sizeof(_BMS_BLK_DATA2));
 			}
-			else if (current_blk_data_2_send==2){
+			else if (current_blk_data_2_send==1){
 				TxHeader.DLC=sizeof(_BMS_BLK_DATA3);
 				memcpy(CanTxData, (uint8_t*)&bms_blk_data3,sizeof(_BMS_BLK_DATA3));
 			}
@@ -464,12 +381,13 @@ uint8_t	process_CAN(void)
 			break;
 
 		/*****************************************************/
-		case PB_SET_CMD:
+		case BB_SET_CMD:
 			//printf("WRITE_REG_CMD\n");
 			uint8_t channal = CanRxData[1];
 			uint8_t value = CanRxData[2];
+			uint8_t direction = CanRxData[3];
 
-			PBalancer_set(channal, value);
+			BlkBalancer_set(channal, value, direction);
 			CanTxData[1] = ACK;
 			ReplayHeader.DLC = 2;
 			CanTxData[0] = REPLAY_AKC_NACK_CMD;
@@ -477,13 +395,13 @@ uint8_t	process_CAN(void)
 			break;
 
 		/*****************************************************/
-		case PB_SET_OE_CMD:
+		case BB_SET_OE_CMD:
 			//printf("WRITE_REG_CMD\n");
 
 			if (CanRxData[1])
-				PB_OutputEnable(GPIO_PIN_SET);
+				BB_OutputEnable(GPIO_PIN_SET);
 			else
-				PB_OutputEnable(GPIO_PIN_RESET);
+				BB_OutputEnable(GPIO_PIN_RESET);
 
 			CanTxData[1] = ACK;
 			ReplayHeader.DLC = 2;
@@ -491,45 +409,6 @@ uint8_t	process_CAN(void)
 			can_task_scheduler |= PROCESS_CAN_SEND_REPLAY;
 			break;
 
-		/*****************************************************/
-		case NEEY_SET_CMD:
-			//printf("WRITE_REG_CMD\n");
-
-			if (Send_Param_to_neey(CanRxData[1], (uint8_t*)&CanRxData[2] , RxHeader.DLC-2)==HAL_OK) {
-				CanTxData[1] = ACK;
-			}
-			else {
-				CanTxData[1] = NACK;
-			}
-
-			ReplayHeader.DLC = 2;
-			CanTxData[0] = REPLAY_AKC_NACK_CMD;
-			can_task_scheduler |= PROCESS_CAN_SEND_REPLAY;
-			break;
-
-		/*****************************************************/
-		case NEEY_GET_INFO_CMD:
-			//printf("ADC_READ_REG_CMD\n");
-			sys_reg = (CanRxData[1]<<7)+CanRxData[2];
-			len=CanRxData[3];
-
-			if(!len || len >7)
-				len=1;
-
-			if (sys_reg < sizeof(_NEEY_INFO)) {
-				CanTxData[0] = REPLAY_DATA_CMD;
-				//CanTxData[1] = sys_reg;
-				memcpy((uint8_t *)&CanTxData[1],(((uint8_t *)&neey_ctrl.neey_dev_info)+sys_reg),len);
-				//CanTxData[2] = *(((uint8_t *)&main_regs)+sys_reg);
-				ReplayHeader.DLC = len+1;
-			}
-			else {
-				CanTxData[0] = REPLAY_AKC_NACK_CMD;
-				CanTxData[1] = NACK;
-				ReplayHeader.DLC = 2;
-			}
-			can_task_scheduler |= PROCESS_CAN_SEND_REPLAY;
-			break;
 
 #ifdef __WS2812B__
 		/*****************************************************/
@@ -562,14 +441,6 @@ uint8_t	process_CAN(void)
 
 #endif
 		/*****************************************************/
-		case BMS_GET_CELL_DATA_CMD:
-			if (prepare_BMS_CellData()) {
-				can_task_scheduler |= PROCESS_CAN_SEND_NEW_CELL_DATA;
-			}
-			else {
-				return can_task_scheduler;
-			}
-			break;
 
 		/*****************************************************/
 		case BMS_GET_BLK_DATA_CMD:
