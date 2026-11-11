@@ -209,19 +209,19 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 /* USER CODE BEGIN 1 */
 
 
-uint8_t prepare_BMS_BLKData()
+uint8_t prepare_BMSB_BLKData()
 {
 	if (dt.data_lock)
 		return 0;
 
 	dt.data_lock = 1;
 
-	bms_blk_data2.bms_data_type=BMS_GET_BLK_DATA_CMD;
+	bms_blk_data2.bms_data_type=BMSB_GET_BLK_DATA_CMD;
 	bms_blk_data2.flags_ch_number=2;
 	bms_blk_data2.ave_voltage=0;
 	bms_blk_data2.div_voltage=0;
 
-	bms_blk_data3.bms_data_type=BMS_GET_BLK_DATA_CMD;
+	bms_blk_data3.bms_data_type=BMSB_GET_BLK_DATA_CMD;
 	bms_blk_data3.flags_ch_number=3;
 	bms_blk_data3.bal_current=0;
 	//bms_blk_data3.heat_sink_temperatur=(int16_t)getTemperatureByROM_Celsius(&dt, (uint8_t*)main_regs.cfg_regs.temp_sensor_lookup_table[22]);
@@ -381,7 +381,7 @@ uint8_t	process_CAN(void)
 			break;
 
 		/*****************************************************/
-		case BB_SET_CMD:
+		case BMSB_SET_CMD:
 			//printf("WRITE_REG_CMD\n");
 			uint8_t channal = CanRxData[1];
 			uint8_t value = CanRxData[2];
@@ -395,7 +395,7 @@ uint8_t	process_CAN(void)
 			break;
 
 		/*****************************************************/
-		case BB_SET_OE_CMD:
+		case BMSBB_SET_OE_CMD:
 			//printf("WRITE_REG_CMD\n");
 
 			if (CanRxData[1])
@@ -443,8 +443,8 @@ uint8_t	process_CAN(void)
 		/*****************************************************/
 
 		/*****************************************************/
-		case BMS_GET_BLK_DATA_CMD:
-			if (prepare_BMS_BLKData()) {
+		case BMSB_GET_BLK_DATA_CMD:
+			if (prepare_BMSB_BLKData()) {
 				can_task_scheduler |= PROCESS_CAN_SEND_NEW_BLK_DATA;
 			}
 			else {
